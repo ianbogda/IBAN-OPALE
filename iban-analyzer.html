@@ -52,8 +52,9 @@
         <h1>Décodage IBAN FR</h1>
       </span>
       <div class="ms-auto d-flex gap-2">
-        <button class="btn btn-outline-primary btn-sm" id="btnExample">Exemple</button>
-        <button class="btn btn-outline-secondary btn-sm" id="btnReset">Réinitialiser</button>
+        <button class="btn btn-outline-primary" id="btnExample">Exemple</button>
+        <button class="btn btn-outline-secondary" id="btnReset">Réinitialiser</button>
+        <button class="btn btn-warning" id="btnOpenRibModal">Générer un RIB (PDF)</button>
       </div>
     </div>
   </nav>
@@ -90,6 +91,8 @@
             <button class="btn btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#refCollapse" aria-expanded="false" aria-controls="refCollapse">
               Référentiel banques (nom + BIC) — modifier / compléter
             </button>
+            <br/>
+
             <div class="collapse mt-3" id="refCollapse">
               <p class="text-muted mb-2">
                 Le BIC n’est pas codé dans l’IBAN. Le module fait un lookup à partir du <span class="mono">code banque</span> via ce JSON local.
@@ -104,7 +107,6 @@
               </div>
             </div>
           </div>
-
         </div>
       </div>
 
@@ -156,19 +158,106 @@
 	  <br/> <span id="app-version"> Version</span>
     </footer>
   </main>
+<div class="modal fade" id="ribModal" tabindex="-1" aria-labelledby="ribModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content" style="border-radius: 18px; overflow:hidden;">
+      <div class="modal-header">
+        <h5 class="modal-title" id="ribModalLabel">Génération d’un Relevé d’Identité Bancaire</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button>
+      </div>
+
+      <div class="modal-body">
+        <!-- En-tête type modèle -->
+        <div class="p-3 border rounded-3" id="ribPreview" style="background:#fff;">
+          <div class="text-center fw-bold mb-3" style="letter-spacing:.4px;">RELEVÉ D’IDENTITÉ BANCAIRE</div>
+
+          <div class="mb-2">
+            <div class="fw-bold">TITULAIRE DU COMPTE:</div>
+            <div class="text-muted" style="font-style:italic;">Nom et prénom du titulaire</div>
+            <input class="form-control mt-2" id="ribHolderName" placeholder="Nom et prénom" />
+            <div class="text-muted mt-2" style="font-style:italic;">(adresse postale généralement)</div>
+            <textarea class="form-control mt-2" id="ribHolderAddress" rows="2" placeholder="Adresse postale"></textarea>
+          </div>
+
+          <!-- Tableau Code banque / guichet / compte / clé -->
+          <div class="mt-3" style="border:1px solid #bdbdbd;">
+            <div class="d-grid" style="grid-template-columns: 1fr 1fr 1.3fr .7fr;">
+              <div class="p-2 fw-bold" style="border-right:1px solid #bdbdbd;">Code banque</div>
+              <div class="p-2 fw-bold" style="border-right:1px solid #bdbdbd;">Code Guichet</div>
+              <div class="p-2 fw-bold" style="border-right:1px solid #bdbdbd;">Numéro de compte</div>
+              <div class="p-2 fw-bold">Clé RIB</div>
+
+              <div class="p-2" style="background:#f2f2f2;border-top:1px solid #bdbdbd;border-right:1px solid #bdbdbd;">
+                <span class="mono" id="ribBankCodePreview">—</span>
+              </div>
+              <div class="p-2" style="background:#f2f2f2;border-top:1px solid #bdbdbd;border-right:1px solid #bdbdbd;">
+                <span class="mono" id="ribBranchCodePreview">—</span>
+              </div>
+              <div class="p-2" style="background:#f2f2f2;border-top:1px solid #bdbdbd;border-right:1px solid #bdbdbd;">
+                <span class="mono" id="ribAccountPreview">—</span>
+              </div>
+              <div class="p-2" style="background:#f2f2f2;border-top:1px solid #bdbdbd;">
+                <span class="mono" id="ribKeyPreview">—</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- IBAN / BIC -->
+          <div class="mt-3" style="border:1px solid #bdbdbd;">
+            <div class="d-grid" style="grid-template-columns: .35fr 1fr;">
+              <div class="p-2 fw-bold" style="border-right:1px solid #bdbdbd;">IBAN</div>
+              <div class="p-2" style="background:#f2f2f2;">
+                <span class="mono" id="ribIbanPreview">—</span>
+              </div>
+
+              <div class="p-2 fw-bold" style="border-top:1px solid #bdbdbd;border-right:1px solid #bdbdbd;">BIC</div>
+              <div class="p-2" style="background:#f2f2f2;border-top:1px solid #bdbdbd;">
+                <span class="mono" id="ribBicPreview">—</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Domiciliation -->
+          <div class="mt-4">
+            <div class="fw-bold">DOMICILIATION:</div>
+            <div class="text-muted" style="font-style:italic;">Nom de la banque</div>
+            <input class="form-control mt-2" id="ribBankName" placeholder="Nom de la banque" />
+            <div class="text-muted mt-2" style="font-style:italic;">(adresse postale de la banque généralement)</div>
+            <textarea class="form-control mt-2" id="ribBankAddress" rows="2" placeholder="Adresse de la banque"></textarea>
+          </div>
+        </div>
+      </div>
+
+      <div class="container my-3">
+        <div id="ribMissingMsg" class="small text-muted"></div>
+      </div>
+
+      <div class="modal-footer d-flex justify-content-between align-items-center">
+        <div class="text-muted small" id="ribModalHint">PDF A5 paysage (210×148 mm)</div>
+        <div class="d-flex gap-2">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fermer</button>
+          <button type="button" class="btn btn-success" id="btnGenerateRibPdf" disabled>Générer le PDF</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 
   <script>
   /**
  * IBAN Op@le - IBAN vers RIB
  *
- * @version 0.0.1
+ * @version 0.1.1
  * @author Yann Bogdanovic
  * @description
  *  - IBAN OP@LE permet de vérifier un IBAN et de découper selon RIB
  */
-	const APP_VERSION = "IBAN OP@LE - 0.0.1";
+	const APP_VERSION = "IBAN OP@LE - 0.1.1";
 	window.addEventListener("DOMContentLoaded", () => {
 		const el = document.getElementById("app-version");
 		if (el) el.textContent = APP_VERSION;
@@ -536,10 +625,264 @@
       return BANK_REF[bankCode] || null;
     }
 
-	function formatIbanPretty(iban){
-	  // groupé par 4
-	  return (iban || "").replace(/(.{4})/g, "$1 ").trim();
-	}
+// --- Formatage IBAN groupé par 4
+function formatIbanPretty(iban){
+  return (iban || "").replace(/(.{4})/g, "$1 ").trim();
+}
+
+// --- Etat courant (récupéré depuis votre décodeur)
+function getAnalyzerState(){
+  // On lit ce qui est déjà affiché dans vos sorties.
+  // Adaptez les IDs si nécessaire à votre page.
+  const bankCode   = document.getElementById("outBankCode")?.textContent?.trim() || "";
+  const branchCode = document.getElementById("outBranchCode")?.textContent?.trim() || "";
+  const account    = document.getElementById("outAccount")?.textContent?.trim() || "";
+  const ribKey     = document.getElementById("outRibKey")?.textContent?.trim() || "";
+  const bankName   = document.getElementById("outBankName")?.textContent?.trim() || "";
+  const bic        = document.getElementById("outBic")?.textContent?.trim() || "";
+  const ibanRaw    = normalizeIban(document.getElementById("iban")?.value || "");
+
+  const ibanPretty = formatIbanPretty(ibanRaw);
+
+  return { bankCode, branchCode, account, ribKey, bankName, bic, ibanRaw, ibanPretty };
+}
+
+// --- Remplir le preview modal depuis l’analyzer
+function fillRibModalFromAnalyzer(){
+  const s = getAnalyzerState();
+
+  // Préviews (issus du décodeur)
+  document.getElementById("ribBankCodePreview").textContent = s.bankCode || "—";
+  document.getElementById("ribBranchCodePreview").textContent = s.branchCode || "—";
+  document.getElementById("ribAccountPreview").textContent = s.account || "—";
+  document.getElementById("ribKeyPreview").textContent = s.ribKey || "—";
+  document.getElementById("ribIbanPreview").textContent = s.ibanPretty || "—";
+  document.getElementById("ribBicPreview").textContent = s.bic || "—";
+
+  // Domiciliation préremplie (modifiable)
+  const bankNameInput = document.getElementById("ribBankName");
+  if (bankNameInput && (!bankNameInput.value || bankNameInput.value.trim() === "")){
+    // Evite d’injecter "Inconnu (...)"
+    bankNameInput.value = (s.bankName && !s.bankName.toLowerCase().includes("inconnu"))
+      ? s.bankName
+      : "";
+  }
+
+  validateRibModal(); // met à jour bouton + message
+}
+
+// --- Validation des champs requis
+function getRibMissingFields(){
+  const s = getAnalyzerState();
+
+  const holderName = document.getElementById("ribHolderName").value.trim();
+  const holderAddr = document.getElementById("ribHolderAddress").value.trim();
+  const bankName   = document.getElementById("ribBankName").value.trim();
+  const bankAddr   = document.getElementById("ribBankAddress").value.trim();
+
+  const missing = [];
+
+  // Champs “modal”
+  if (!holderName) missing.push("Nom et prénom du titulaire");
+  if (!holderAddr) missing.push("Adresse postale du titulaire");
+  if (!bankName)   missing.push("Nom de la banque (domiciliation)");
+  if (!bankAddr)   missing.push("Adresse de la banque (domiciliation)");
+
+  // Champs “décodés”
+  // On exige qu’ils existent réellement (donc que l’IBAN soit FR et décodé)
+  if (!s.bankCode || s.bankCode.includes("—")) missing.push("Code banque (depuis l’IBAN)");
+  if (!s.branchCode || s.branchCode.includes("—")) missing.push("Code guichet (depuis l’IBAN)");
+  if (!s.account || s.account.includes("—")) missing.push("Numéro de compte (depuis l’IBAN)");
+  if (!s.ribKey || s.ribKey.includes("—")) missing.push("Clé RIB (depuis l’IBAN)");
+  if (!s.ibanRaw || s.ibanRaw.length < 15) missing.push("IBAN");
+  if (!s.bic || s.bic.includes("—") || s.bic.toLowerCase().includes("inconnu")) missing.push("BIC (référentiel)");
+
+  return missing;
+}
+
+function validateRibModal(){
+  const missing = getRibMissingFields();
+
+  // bouton PDF
+  const btn = document.getElementById("btnGenerateRibPdf");
+  btn.disabled = missing.length > 0;
+
+  // message en bas de page
+  const msg = document.getElementById("ribMissingMsg");
+  if (missing.length === 0){
+    msg.textContent = "RIB prêt : tous les champs requis sont renseignés.";
+  }else{
+    msg.textContent = "Champs manquants pour générer le RIB PDF : " + missing.join(" ; ") + ".";
+  }
+}
+
+// --- Génération PDF A5 paysage (jsPDF)
+async function generateRibPdfA5Landscape(){
+  const missing = getRibMissingFields();
+  if (missing.length > 0) return; // sécurité
+
+  const s = getAnalyzerState();
+  const holderName = document.getElementById("ribHolderName").value.trim();
+  const holderAddr = document.getElementById("ribHolderAddress").value.trim();
+  const bankName   = document.getElementById("ribBankName").value.trim();
+  const bankAddr   = document.getElementById("ribBankAddress").value.trim();
+
+  const { jsPDF } = window.jspdf;
+
+  // A5 paysage = 210 x 148 mm
+  const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: [210, 148] });
+
+  // Helpers draw
+  const margin = 8;
+  const W = 210, H = 148;
+
+  doc.setDrawColor(0);
+  doc.setLineWidth(0.4);
+
+  // Cadre extérieur
+  doc.rect(margin, margin, W - 2*margin, H - 2*margin);
+
+  // Titre
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(16);
+  doc.text("RELEVÉ D’IDENTITÉ BANCAIRE", W/2, margin + 10, { align: "center" });
+
+  // Section titulaire
+  let y = margin + 20;
+  doc.setFontSize(12);
+  doc.text("TITULAIRE DU COMPTE:", margin + 6, y);
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+  y += 6;
+  doc.text(holderName, margin + 6, y);
+
+  y += 5;
+  const holderAddrLines = doc.splitTextToSize(holderAddr, W - 2*margin - 12);
+  doc.text(holderAddrLines, margin + 6, y);
+
+  // Tableau code banque / guichet / compte / clé
+  y += (holderAddrLines.length * 4) + 8;
+
+  const tableX = margin + 6;
+  const tableW = W - 2*margin - 12;
+  const tableY = y;
+  const headerH = 10;
+  const rowH = 10;
+
+  const colWidths = [
+    tableW * 0.26, // code banque
+    tableW * 0.26, // code guichet
+    tableW * 0.34, // compte
+    tableW * 0.14  // clé
+  ];
+
+  // Header row
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(12);
+  doc.rect(tableX, tableY, tableW, headerH);
+  let cx = tableX;
+  const headers = ["Code banque", "Code Guichet", "Numéro de compte", "Clé RIB"];
+  for (let i=0;i<4;i++){
+    doc.rect(cx, tableY, colWidths[i], headerH);
+    doc.text(headers[i], cx + 2.5, tableY + 6.8);
+    cx += colWidths[i];
+  }
+
+  // Value row (gris)
+  doc.setFillColor(242,242,242);
+  doc.rect(tableX, tableY + headerH, tableW, rowH, "F");
+  doc.setDrawColor(0);
+  doc.rect(tableX, tableY + headerH, tableW, rowH);
+
+  doc.setFont("courier", "normal");
+  doc.setFontSize(12);
+  cx = tableX;
+  const vals = [s.bankCode, s.branchCode, s.account, s.ribKey];
+  for (let i=0;i<4;i++){
+    doc.rect(cx, tableY + headerH, colWidths[i], rowH);
+    doc.text(vals[i], cx + 2.5, tableY + headerH + 6.8);
+    cx += colWidths[i];
+  }
+
+  // IBAN / BIC blocs
+  y = tableY + headerH + rowH + 8;
+  const ibX = tableX;
+  const ibWLeft = tableW * 0.18;
+  const ibWRight = tableW - ibWLeft;
+
+  // IBAN row
+  doc.setFont("helvetica","bold");
+  doc.setFontSize(12);
+  doc.rect(ibX, y, tableW, rowH);
+  doc.rect(ibX, y, ibWLeft, rowH);
+  doc.text("IBAN", ibX + 2.5, y + 6.8);
+
+  doc.setFillColor(242,242,242);
+  doc.rect(ibX + ibWLeft, y, ibWRight, rowH, "F");
+  doc.rect(ibX + ibWLeft, y, ibWRight, rowH);
+
+  doc.setFont("courier","normal");
+  doc.setFontSize(11);
+  doc.text(formatIbanPretty(s.ibanRaw), ibX + ibWLeft + 2.5, y + 6.8);
+
+  // BIC row
+  y += rowH;
+  doc.setFont("helvetica","bold");
+  doc.setFontSize(12);
+  doc.rect(ibX, y, tableW, rowH);
+  doc.rect(ibX, y, ibWLeft, rowH);
+  doc.text("BIC", ibX + 2.5, y + 6.8);
+
+  doc.setFillColor(242,242,242);
+  doc.rect(ibX + ibWLeft, y, ibWRight, rowH, "F");
+  doc.rect(ibX + ibWLeft, y, ibWRight, rowH);
+
+  doc.setFont("courier","normal");
+  doc.setFontSize(11);
+  doc.text(s.bic, ibX + ibWLeft + 2.5, y + 6.8);
+
+  // Domiciliation
+  y += rowH + 10;
+  doc.setFont("helvetica","bold");
+  doc.setFontSize(12);
+  doc.text("DOMICILIATION:", margin + 6, y);
+
+  doc.setFont("helvetica","normal");
+  doc.setFontSize(10);
+  y += 6;
+  doc.text(bankName, margin + 6, y);
+  y += 5;
+  const bankAddrLines = doc.splitTextToSize(bankAddr, W - 2*margin - 12);
+  doc.text(bankAddrLines, margin + 6, y);
+
+  // Nom fichier
+  const safeName = holderName.replace(/[^\p{L}\p{N}\s_-]/gu, "").trim().replace(/\s+/g,"_");
+  doc.save(`RIB_${safeName || "titulaire"}.pdf`);
+}
+
+// --- Wiring
+document.getElementById("btnOpenRibModal").addEventListener("click", () => {
+  fillRibModalFromAnalyzer();
+  const modal = new bootstrap.Modal(document.getElementById("ribModal"));
+  modal.show();
+});
+
+// Validation live
+["ribHolderName","ribHolderAddress","ribBankName","ribBankAddress"].forEach(
+  id => document.getElementById(id).addEventListener("input", validateRibModal)
+);
+
+// Générer PDF
+document.getElementById("btnGenerateRibPdf").addEventListener("click", async () => {
+  validateRibModal();
+  if (!document.getElementById("btnGenerateRibPdf").disabled){
+    await generateRibPdfA5Landscape();
+  }
+});
+
+// Optionnel : quand on redécode un IBAN, actualiser le preview si modal ouvert
+// (appelez fillRibModalFromAnalyzer() après decode() si vous voulez)
 
 	function formatRibPretty(bankCode, branchCode, account, ribKey){
 	  const b = bankCode || "";
@@ -559,8 +902,13 @@
       $("outRibKey").textContent = "—";
       $("outBankName").textContent = "—";
       $("outBic").textContent = "—";
-	  $("outRibPretty").textContent = "—";
+	    $("outRibPretty").textContent = "—";
       log("—");
+      //RIB PDF
+      ("ribHolderName").textContent = "";
+      ("ribHolderAddress").textContent = "";
+      ("ribBankName").textContent = "";
+      ("ribBankAddress").textContent = "";
     }
 
     function copyToClipboard(text){
@@ -686,13 +1034,112 @@
       log(logs);
 
       // Message de synthèse
-	  /*
       if (mod === 1){
-        showMsg(`Décodage terminé. IBAN <b>valide</b> (MOD97=1).`, "success");
+        showMsg(`Décodage terminé. IBAN <b>valide</b>.`, "success");
       }else{
         showMsg(`Décodage terminé, mais IBAN <b>non valide</b> (MOD97≠1). Vérifiez la saisie.`, "danger");
       }
-	  */
+    }
+
+    // Estimation de largeur en mm (jsPDF ne donne pas toujours une mesure parfaite,
+    // mais getTextWidth() est suffisamment bon pour un tampon)
+    function textWidthMM(doc, text){
+      // jsPDF renvoie une largeur en "unit" du doc (ici mm)
+      return doc.getTextWidth(text);
+    }
+
+    /**
+     * Dessine un texte sur un arc avec un espacement basé sur la largeur réelle du texte.
+     * - text : texte à dessiner
+     * - cx, cy : centre
+     * - radius : rayon du texte (sur la ligne de base)
+     * - startAngleDeg : angle (deg) du point de départ (0 = droite, -90 = haut)
+     * - clockwise : sens
+     * - letterSpacingMM : tracking additionnel en mm (ex: 0.2 à 0.6)
+     * - inward : si true, le texte est orienté vers l’intérieur (tampon)
+     */
+    function drawTextOnArc(doc, text, cx, cy, radius, startAngleDeg, clockwise=true, letterSpacingMM=0.35, inward=true){
+      const chars = String(text || "").split("");
+      if (!chars.length) return;
+
+      // Conversion mm -> angle (rad) via longueur d’arc s = r * theta => theta = s/r
+      const widths = chars.map(ch => textWidthMM(doc, ch) + letterSpacingMM);
+      const totalArc = widths.reduce((a,b)=>a+b,0);
+
+      const totalTheta = totalArc / radius; // en radians
+      const dir = clockwise ? 1 : -1;
+
+      // On centre le texte autour de startAngle
+      let theta = (Math.PI/180) * startAngleDeg - dir * (totalTheta/2);
+
+      for (let i=0; i<chars.length; i++){
+        const w = widths[i];
+        const dTheta = w / radius;
+
+        // position au milieu du segment
+        const mid = theta + dir * (dTheta/2);
+
+        const x = cx + radius * Math.cos(mid);
+        const y = cy + radius * Math.sin(mid);
+
+        // orientation tangentielle
+        let rot = (mid * 180/Math.PI) + (clockwise ? 90 : -90);
+
+        // orienter vers l’intérieur (style tampon)
+        if (inward) rot += 180;
+
+        doc.text(chars[i], x, y, { angle: rot, align: "center", baseline: "middle" });
+
+        theta += dir * dTheta;
+      }
+    }
+
+    /**
+     * Tampon "administration" : texte en arc en haut + texte centré.
+     * Optionnel : texte en arc en bas (si vous voulez une 2ème ligne)
+     */
+    function drawAdminStamp(doc, {
+      orgTopText,
+      orgBottomText = "",      // optionnel
+      roleText,
+      cx, cy,
+      outerRadius = 18,
+      innerRadius = 14
+    }){
+      // Cercles
+      doc.setDrawColor(0);
+      doc.setLineWidth(0.7);
+      doc.circle(cx, cy, outerRadius);
+      doc.setLineWidth(0.45);
+      doc.circle(cx, cy, innerRadius);
+
+      // Texte arc haut (propre)
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(9);
+
+      // Arc haut : centré en haut (-90°)
+      drawTextOnArc(doc, orgTopText, cx, cy, outerRadius - 2, -90, true, 0.35, true);
+
+      // Arc bas (optionnel) : centré en bas (+90°) en sens inverse pour lecture normale
+      if (orgBottomText && orgBottomText.trim()){
+        drawTextOnArc(doc, orgBottomText, cx, cy, outerRadius - 2, 90, false, 0.35, true);
+      }
+
+      // Rôle au centre (2 lignes max, esthétique)
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(11);
+
+      const maxWidth = innerRadius * 1.55;
+      const lines = doc.splitTextToSize(String(roleText || "").toUpperCase(), maxWidth).slice(0, 2);
+
+      // centrage vertical mieux maîtrisé
+      const lineH = 5;
+      const blockH = lines.length * lineH;
+      let y0 = cy - (blockH/2) + 1.5;
+
+      lines.forEach((ln, idx) => {
+        doc.text(ln, cx, y0 + idx*lineH, { align: "center", baseline: "middle" });
+      });
     }
 
     // ---------------------------
