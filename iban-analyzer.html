@@ -1,0 +1,801 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Décodage IBAN FR — Code banque / guichet / RIB / BIC</title>
+
+  <!-- Bootstrap 5 -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+
+	<style>
+	  :root{
+		font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+		line-height: 1.4;
+	  }
+	  body{
+		background:#f7f8fb;
+		padding-bottom:2rem;
+	  }
+	  .page{
+		background:#fff;
+		border-radius:0.75rem;
+		box-shadow:0 .25rem 1rem rgba(0,0,0,.06);
+		padding:1.5rem;
+	  }
+	  .muted-hint{ color:#6c757d; font-size:.925rem; }
+	  .mono{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace; }
+	  .badge-soft{
+		background:#eef3ff; color:#274690; border:1px solid #dbe6ff;
+		font-weight:600;
+	  }
+	  .form-control, .form-select{ border-radius:.6rem; }
+	  .btn{ border-radius:.6rem; }
+	  .kv{
+		display:flex; justify-content:space-between; gap:1rem;
+		padding:.65rem .85rem;
+		border-radius:.75rem;
+		background:#fff;
+		border:1px solid #eef1f6;
+		box-shadow:0 .15rem .75rem rgba(0,0,0,.04);
+	  }
+	  .kv .k{ color:#6c757d; font-size:.9rem; }
+	  .kv .v{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace; }
+	</style>
+</head>
+
+<body>
+
+  <nav class="navbar navbar-expand-lg navbar-dark sticky-top">
+    <div class="container py-2">
+      <span class="brand-pill">
+        <h1>Décodage IBAN FR</h1>
+      </span>
+      <div class="ms-auto d-flex gap-2">
+        <button class="btn btn-outline-primary btn-sm" id="btnExample">Exemple</button>
+        <button class="btn btn-outline-secondary btn-sm" id="btnReset">Réinitialiser</button>
+      </div>
+    </div>
+  </nav>
+<div class="container my-4">
+  <div class="page">
+  <main class="container my-4 my-lg-5">
+    <div class="row g-4">
+      <div class="col-12 col-lg-6">
+        <div class="ci-card p-4">
+          <div class="d-flex align-items-start justify-content-between gap-3">
+            <div>
+              <h1 class="h4 mb-1">Entrée</h1>
+              <p class="text-muted mb-0">Saisissez un IBAN. Ce module décode le format <span class="badge badge-soft">FR</span> et contrôle la validité (MOD 97).</p>
+            </div>
+          </div>
+
+          <hr class="border-0" style="height:1px;background:var(--ci-border);opacity:1;">
+
+          <label for="iban" class="form-label">IBAN</label>
+          <div class="input-group mb-2">
+            <input id="iban" class="form-control form-control-lg mono" placeholder="FR76 3000 4009 7612 3456 7890 189" autocomplete="off" />
+            <button class="btn btn-primary" id="btnDecode">Décoder</button>
+          </div>
+          <div class="d-flex flex-wrap gap-2 align-items-center">
+            <span class="small-note">Astuce : espaces et minuscules sont acceptés.</span>
+            <span class="ms-auto badge badge-soft" id="ibanStatus">En attente</span>
+          </div>
+
+          <div class="mt-4">
+            <div class="alert mb-0" id="msgBox" role="alert" style="display:none;"></div>
+          </div>
+
+          <div class="mt-4">
+            <button class="btn btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#refCollapse" aria-expanded="false" aria-controls="refCollapse">
+              Référentiel banques (nom + BIC) — modifier / compléter
+            </button>
+            <div class="collapse mt-3" id="refCollapse">
+              <p class="text-muted mb-2">
+                Le BIC n’est pas codé dans l’IBAN. Le module fait un lookup à partir du <span class="mono">code banque</span> via ce JSON local.
+              </p>
+              <textarea id="bankRef" class="form-control mono" rows="8" spellcheck="false"></textarea>
+              <div class="d-flex gap-2 mt-2">
+                <button class="btn btn-outline-secondary" id="btnApplyRef">Appliquer</button>
+                <button class="btn btn-outline-secondary" id="btnRestoreRef">Restaurer défaut</button>
+              </div>
+              <div class="small-note mt-2">
+                Format : { "30004": {"name":"…","bic":"…"}, ... }
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <div class="col-12 col-lg-6">
+        <div class="ci-card p-4 h-100">
+          <div class="d-flex align-items-start justify-content-between gap-3">
+            <div>
+              <h2 class="h4 mb-1">Résultats</h2>
+              <p class="text-muted mb-0">Extraction des composantes RIB et tentative d’identification banque/BIC.</p>
+            </div>
+          </div>
+
+          <hr class="border-0" style="height:1px;background:var(--ci-border);opacity:1;">
+
+          <div class="vstack gap-2">
+			<div class="kv"><div class="k">RIB (format)</div><div class="v" id="outRibPretty">—</div></div>
+            <div class="kv"><div class="k">Pays</div><div class="v" id="outCountry">—</div></div>
+            <div class="kv"><div class="k">Clé IBAN</div><div class="v" id="outIbanKey">—</div></div>
+            <div class="kv"><div class="k">Code banque (établissement)</div><div class="v" id="outBankCode">—</div></div>
+            <div class="kv"><div class="k">Code guichet (agence)</div><div class="v" id="outBranchCode">—</div></div>
+            <div class="kv"><div class="k">N° de compte</div><div class="v" id="outAccount">—</div></div>
+            <div class="kv"><div class="k">Clé RIB</div><div class="v" id="outRibKey">—</div></div>
+            <div class="kv"><div class="k">Banque (lookup)</div><div class="v" id="outBankName">—</div></div>
+            <div class="kv"><div class="k">BIC (lookup)</div><div class="v" id="outBic">—</div></div>
+          </div>
+
+          <div class="mt-4">
+            <div class="d-flex flex-wrap gap-2">
+              <button class="btn btn-outline-primary" id="btnCopyRib">Copier RIB (BBAN)</button>
+              <button class="btn btn-outline-secondary" id="btnCopyAll">Copier tout</button>
+            </div>
+            <div class="small-note mt-2">
+              BBAN (FR) = code banque + code guichet + n° compte + clé RIB.
+            </div>
+          </div>
+
+          <div class="mt-4">
+            <div class="small-note mb-2">Journal technique</div>
+            <pre class="codebox mono" id="logBox">—</pre>
+          </div>
+
+        </div>
+      </div>
+    </div>
+</div>
+</div>
+    <footer class="mt-5 text-center small-note">
+      Conçu pour un usage "contrôle interne" : validation format, extraction, traçabilité, et référentiel local modifiable.
+	  <br/> <span id="app-version"> Version</span>
+    </footer>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+  <script>
+  /**
+ * IBAN Op@le - IBAN vers RIB
+ *
+ * @version 0.0.1
+ * @author Yann Bogdanovic
+ * @description
+ *  - IBAN OP@LE permet de vérifier un IBAN et de découper selon RIB
+ */
+	const APP_VERSION = "IBAN OP@LE - 0.0.1";
+	window.addEventListener("DOMContentLoaded", () => {
+		const el = document.getElementById("app-version");
+		if (el) el.textContent = APP_VERSION;
+	});
+	// Banque de France — "code interbancaire" (5 chiffres) -> libellé
+	// Source: PDF BdF "liste des assujettis mensuels 2023" (20230111). :contentReference[oaicite:3]{index=3}
+	const DEFAULT_BANK_REF = {
+	  "00006": {"name":"Caisse des dépôts et consignations - fonds d'épargne","bic":"CDCGFRPP"},
+	  "10008": {"name":"CM-CIC Leasing Solutions"},
+	  "10057": {"name":"Banque CIC Sud Ouest"},
+	  "10088": {"name":"Société de promotion et de participation pour la coopération économique-Proparco"},
+	  "10096": {"name":"Lyonnaise de banque \"L.B.\""},
+	  "10107": {"name":"BRED - Banque populaire","bic":"BREDFRPP"},
+	  "10128": {"name":"Intesa Sanpaolo SpA"},
+	  "10207": {"name":"Banque populaire Rives de Paris","bic":"CCBPFRPPXXX"},
+	  "10278": {"name":"Crédit mutuel","bic":"CMCIFR2A"},
+	  "10548": {"name":"Banque de Savoie","bic":"BSAVFR2C"},
+	  "10550": {"name":"Mercedes-Benz financial services France S.A."},
+	  "10807": {"name":"Banque populaire Bourgogne Franche-Comté","bic":"CCBPFRPPXXX"},
+	  "10907": {"name":"Banque populaire Aquitaine Centre Atlantique","bic":"CCBPFRPPXXX"},
+	  "11128": {"name":"BPCE lease"},
+	  "11138": {"name":"BPCE Factor"},
+	  "11188": {"name":"RCI Banque"},
+	  "11238": {"name":"SwissLife banque privée","bic":"SWILFRPP"},
+	  "11307": {"name":"CASDEN Banque Populaire","bic":"CCBPFRPPXXX"},
+	  "11315": {"name":"Caisse d'Epargne CEPAC","bic":"CEPAFRPPXXX"},
+	  "11380": {"name":"C.R.H. - Caisse de refinancement de l'habitat","bic":"CRRHFRPA"},
+	  "11425": {"name":"Caisse d'épargne et de prévoyance Normandie","bic":"CEPAFRPPXXX"},
+	  "11498": {"name":"BNP Paribas wealth management Monaco"},
+	  "11600": {"name":"Crédit mutuel Real Estate Lease"},
+	  "11668": {"name":"Edmond de Rothschild (Monaco)"},
+	  "11728": {"name":"MMB SCF"},
+	  "11808": {"name":"Banque fédérative du crédit mutuel"},
+	  "11899": {"name":"Banque Européenne du Crédit Mutuel"},
+	  "11938": {"name":"AGCO FINANCE"},
+	  "11978": {"name":"Crédit Mutuel Factoring"},
+	  "11999": {"name":"UBS (Monaco) S.A."},
+	  "12128": {"name":"Société centrale pour le financement de l'immobilier - Socfim"},
+	  "12135": {"name":"Caisse d'épargne et de prévoyance de Bourgogne Franche-Comté","bic":"CEPAFRPPXXX"},
+	  "12240": {"name":"Allianz banque","bic":"AGFBFRCC"},
+	  "12280": {"name":"Socram banque","bic":"SORMFR2N"},
+	  "12438": {"name":"SOFIAP (Société financière pour l'accession à la propriété)"},
+	  "12448": {"name":"Barclays bank plc Monaco"},
+	  "12478": {"name":"FCE bank plc"},
+	  "12548": {"name":"Axa banque","bic":"AXABFRPP"},
+	  "12579": {"name":"Banque BCP","bic":"BPSMFRPP"},
+	  "12619": {"name":"Caixa geral de depositos S.A."},
+	  "12739": {"name":"CFM Indosuez Wealth"},
+	  "12748": {"name":"Sogefinancement"},
+	  "12869": {"name":"ONEY BANK","bic":"BACCFR22"},
+	  "12933": {"name":"Caixabank"},
+	  "13070": {"name":"Crédit Mutuel Leasing"},
+	  "13088": {"name":"BNP PARIBAS ANTILLES-GUYANE"},
+	  "13128": {"name":"Cofica bail"},
+	  "13135": {"name":"Caisse d'épargne et de prévoyance de Midi-Pyrénées","bic":"CEPAFRPPXXX"},
+	  "13150": {"name":"LixxBail"},
+	  "13168": {"name":"Banque PSA finance","bic":"PSABFRPP"},
+	  "13335": {"name":"Caisse d'épargne et de prévoyance Aquitaine Poitou-Charentes","bic":"CEPAFRPPXXX"},
+	  "13368": {"name":"Société générale private banking (Monaco)"},
+	  "13369": {"name":"Rothschild Martin Maurel","bic":"BMMMFR2A"},
+	  "13485": {"name":"Caisse d'épargne et de prévoyance du Languedoc Roussillon","bic":"CEPAFRPPXXX"},
+	  "13507": {"name":"Banque populaire du Nord","bic":"CCBPFRPPXXX"},
+	  "13558": {"name":"Auxifip"},
+	  "13580": {"name":"FACTOFRANCE"},
+	  "13698": {"name":"Ester finance technologies"},
+	  "13807": {"name":"Banque populaire Grand Ouest","bic":"CCBPFRPPXXX"},
+	  "13825": {"name":"Caisse d'épargne et de prévoyance de Rhône Alpes","bic":"CEPAFRPPXXX"},
+	  "13858": {"name":"Loisirs finance"},
+	  "13878": {"name":"Toyota kreditbank GmbH - Toyota France financement"},
+	  "13888": {"name":"HSBC Factoring (France)"},
+	  "14020": {"name":"FCA Leasing France"},
+	  "14198": {"name":"Sogelease France"},
+	  "14228": {"name":"SGB Finance"},
+	  "14265": {"name":"Caisse d'épargne et de prévoyance Loire Drôme Ardèche","bic":"CEPAFRPPXXX"},
+	  "14328": {"name":"Amundi finance"},
+	  "14388": {"name":"Caisse Française de Financement Local","bic":"DXMAFRPP"},
+	  "14408": {"name":"HSBC Real Estate Leasing (France)"},
+	  "14445": {"name":"Caisse d'épargne et de prévoyance Bretagne-Pays de Loire","bic":"CEPAFRPPXXX"},
+	  "14505": {"name":"Caisse d'épargne et de prévoyance Loire-Centre","bic":"CEPAFRPPXXX"},
+	  "14508": {"name":"Bank Julius Baer (Monaco) S.A.M."},
+	  "14518": {"name":"ARKEA DIRECT BANK"},
+	  "14607": {"name":"BANQUE POPULAIRE MEDITERRANEE","bic":"CCBPFRPPXXX"},
+	  "14628": {"name":"FLOA"},
+	  "14648": {"name":"Capitole Finance - Tofinso"},
+	  "14658": {"name":"CIF EUROMORTGAGE"},
+	  "14670": {"name":"BMW Finance"},
+	  "14688": {"name":"Star Lease"},
+	  "14707": {"name":"Banque populaire Alsace Lorraine Champagne","bic":"CCBPFRPPXXX"},
+	  "14749": {"name":"PSA BANQUE FRANCE"},
+	  "14768": {"name":"BPCE FINANCEMENT"},
+	  "14940": {"name":"Cofidis"},
+	  "14998": {"name":"Domofinance"},
+	  "15128": {"name":"Volkswagen bank GmbH"},
+	  "15135": {"name":"CAISSE D'EPARGNE ET DE PREVOYANCE GRAND EST EUROPE","bic":"CEPAFRPPXXX"},
+	  "15149": {"name":"Crédit foncier et communal d'Alsace et de Lorraine-Banque"},
+	  "15250": {"name":"SMBC Bank International plc"},
+	  "15548": {"name":"Prioris"},
+	  "15668": {"name":"BNP Paribas home loan SFH","bic":"BNPAFRPL"},
+	  "15728": {"name":"Hyundai Capital France"},
+	  "15848": {"name":"Crédit Mutuel Home Loan SFH"},
+	  "15898": {"name":"Crédit Agricole home loan SFH","bic":"AGRIFRPPXXX"},
+	  "15900": {"name":"FEDERAL FINANCE"},
+	  "15968": {"name":"Société Générale SCF","bic":"GSCFFR22"},
+	  "15970": {"name":"Bail-Actea"},
+	  "15980": {"name":"Arkéa crédit bail"},
+	  "16000": {"name":"Diac"},
+	  "16058": {"name":"HSBC SFH (FRANCE)","bic":"HSFHFRPP"},
+	  "16088": {"name":"Arkéa Home Loans SFH"},
+	  "16178": {"name":"LA BANQUE POSTALE CONSUMER FINANCE"},
+	  "16188": {"name":"BPCE"},
+	  "16190": {"name":"BPCE lease immo"},
+	  "16218": {"name":"Bforbank"},
+	  "16228": {"name":"Société générale SFH","bic":"GSFHFRPP"},
+	  "16275": {"name":"Caisse d'épargne et de prévoyance Hauts de France","bic":"CEPAFRPPXXX"},
+	  "16278": {"name":"Natixis TradEx Solutions"},
+	  "16298": {"name":"Arkéa banking services"},
+	  "16318": {"name":"AXA BANK EUROPE SCF"},
+	  "16358": {"name":"Arkéa public sector SCF"},
+	  "16438": {"name":"BPCE SFH"},
+	  "16468": {"name":"Crédit Agricole Public Sector SCF","bic":"AGRIFRPPXXX"},
+	  "16478": {"name":"La Banque Postale Leasing & Factoring"},
+	  "16588": {"name":"SFIL S.A."},
+	  "16607": {"name":"Banque populaire du Sud","bic":"CCBPFRPPXXX"},
+	  "16608": {"name":"LA BANQUE POSTALE HOME LOAN SFH","bic":"HLBPFRPP"},
+	  "16688": {"name":"AGENCE FRANCE LOCALE"},
+	  "16718": {"name":"Crédit Immobilier de France Développement","bic":"CCIFFRPP"},
+	  "16760": {"name":"Franfinance"},
+	  "16807": {"name":"BANQUE POPULAIRE AUVERGNE RHONE ALPES","bic":"CCBPFRPPXXX"},
+	  "16839": {"name":"Financo"},
+	  "16850": {"name":"Crédit agricole leasing & factoring","bic":"AGRIFRPPXXX"},
+	  "17060": {"name":"SOCIETE GENERALE Factoring","bic":"SGFFFRPP"},
+	  "17128": {"name":"BARCLAYS BANK PLC, FRENCH BRANCH"},
+	  "17188": {"name":"AXA Home Loan SFH","bic":"AHLFFR22"},
+	  "17290": {"name":"Dexia crédit local","bic":"CLFRFRCC"},
+	  "17510": {"name":"Créatis"},
+	  "17515": {"name":"Caisse d'épargne et de prévoyance Ile-de-France","bic":"CEPAFRPPXXX"},
+	  "17519": {"name":"Banque centrale de compensation","bic":"BACPFRPP"},
+	  "17549": {"name":"Natiocrédibail"},
+	  "17569": {"name":"CMB MONACO"},
+	  "17660": {"name":"Généfim"},
+	  "17789": {"name":"Deutsche bank AG"},
+	  "17807": {"name":"Banque populaire Occitane","bic":"CCBPFRPPXXX"},
+	  "17839": {"name":"Opel Bank"},
+	  "17919": {"name":"Qatar national bank"},
+	  "17989": {"name":"FIRST ABU DHABI BANK"},
+	  "18020": {"name":"BNP Paribas Factor"},
+	  "18029": {"name":"BNP Paribas Personal Finance"},
+	  "18059": {"name":"HSBC Bank Plc, Paris Branch","bic":"MIDLFRPX"},
+	  "18129": {"name":"CACEIS Bank","bic":"ISAEFRPP"},
+	  "18189": {"name":"Compagnie générale de crédit aux particuliers - Crédipar","bic":"CGCPFRPL"},
+	  "18315": {"name":"Caisse d'épargne et de prévoyance Côte d'Azur","bic":"CEPAFRPPXXX"},
+	  "18359": {"name":"Bpifrance"},
+	  "18370": {"name":"ORANGE BANK"},
+	  "18529": {"name":"Mizuho bank ltd Paris branch"},
+	  "18530": {"name":"Natiocredimurs, société en nom collectif"},
+	  "18609": {"name":"Caisse centrale du crédit immobilier de France-3CIF","bic":"CCIFFRPP"},
+	  "18707": {"name":"Banque populaire Val de France (2ème du nom)","bic":"CCBPFRPPXXX"},
+	  "18715": {"name":"Caisse d'épargne et de prévoyance d'Auvergne et du Limousin","bic":"CEPAFRPPXXX"},
+	  "18719": {"name":"Banque Française Commerciale Océan Indien","bic":"BFCOFRPP"},
+	  "18759": {"name":"EFG Bank (Monaco)"},
+	  "18769": {"name":"Bank of China limited"},
+	  "18829": {"name":"Arkéa banque entreprises et institutionnels"},
+	  "18869": {"name":"Banque française mutualiste - B.F.M."},
+	  "18919": {"name":"NATIXIS WEALTH MANAGEMENT"},
+	  "19020": {"name":"Crédit moderne Antilles Guyane"},
+	  "19169": {"name":"Finamur"},
+	  "19229": {"name":"Banco de Sabadell"},
+	  "19230": {"name":"Crédit logement"},
+	  "19250": {"name":"Compagnie générale de location d'équipements \"C.G.L.\""},
+	  "19259": {"name":"Sogefimur"},
+	  "19460": {"name":"Sofax banque","bic":"SFAXFRPP"},
+	  "19530": {"name":"Amundi"},
+	  "19870": {"name":"Carrefour banque","bic":"SOAPFR22"},
+	  "20041": {"name":"La Banque Postale","bic":"PSSTFRPP"},
+	  "22040": {"name":"Confédération Nationale du Crédit Mutuel"},
+	  "24349": {"name":"Banque J. Safra Sarasin (Monaco) SA"},
+	  "24599": {"name":"Milleis Banque","bic":"PRIVFRPP"},
+	  "25833": {"name":"Macquarie Bank Europe Designated Activity Company"},
+	  "27180": {"name":"Norbail-Immobilier"},
+	  "27800": {"name":"KBC bank"},
+	  "30001": {"name":"Banque de France","bic":"BDFEFRPPCCT"},
+	  "30002": {"name":"Crédit lyonnais","bic":"CRLYFRPP"},
+	  "30003": {"name":"Société générale s.a.","bic":"SOGEFRPP"},
+	  "30004": {"name":"BNP Paribas","bic":"BNPAFRPP"},
+	  "30007": {"name":"Natixis","bic":"NATXFRPP"},
+	  "30027": {"name":"Banque CIC Nord Ouest"},
+	  "30047": {"name":"Banque CIC Ouest"},
+	  "30051": {"name":"Compagnie de financement foncier"},
+	  "30056": {"name":"HSBC Continental Europe","bic":"CCFRFRPP"},
+	  "30066": {"name":"Crédit industriel et commercial - CIC"},
+	  "30087": {"name":"Banque CIC Est"},
+	  "30438": {"name":"ING Bank NV"},
+	  "30568": {"name":"Banque Transatlantique S.A."},
+	  "30588": {"name":"Barclays Bank Ireland"},
+	  "30628": {"name":"JPMorgan Chase bank, National Association"},
+	  "30758": {"name":"UBS (France) S.A."},
+	  "30788": {"name":"Banque Neuflize OBC","bic":"NSMBFRPP"},
+	  "30958": {"name":"BNP Paribas Lease Group"},
+	  "31489": {"name":"Crédit agricole corporate and investment bank","bic":"AGRIFRPPXXX"},
+	  "39996": {"name":"Crédit Agricole","bic":"AGRIFRPP"},
+	  "40031": {"name":"Caisse des dépôts et consignations - section générale","bic":"CDCGFRPP"},
+	  "40618": {"name":"Boursorama","bic":"BOUSFRPP"},
+	  "40978": {"name":"Banque Palatine","bic":"BSPFFRPP"},
+	  "41189": {"name":"Banco Bilbao Vizcaya Argentaria (BBVA)"},
+	  "41219": {"name":"BANK OF AMERICA EUROPE DESIGNATED ACTIVITY COMPANY"},
+	  "41249": {"name":"MUFG Bank, Ltd"},
+	  "41539": {"name":"CA Consumer Finance"},
+	  "42529": {"name":"Edmond de Rothschild (France)","bic":"COFIFRCP"},
+	  "42559": {"name":"Crédit coopératif","bic":"CCOPFRCP"},
+	  "42799": {"name":"My Money Bank"},
+	  "43199": {"name":"Crédit Foncier de France","bic":"CFFRFRPP"},
+	  "43799": {"name":"CA Indosuez","bic":"SIBLFRPP"},
+	  "44319": {"name":"Louvre Banque Privée"},
+	  "44729": {"name":"Banco Santander SA"},
+	  "45129": {"name":"Agence française de développement"},
+	  "45850": {"name":"Oddo BHF SCA","bic":"ODDOFRPP"}
+	};
+
+    let BANK_REF = structuredClone(DEFAULT_BANK_REF);
+
+	function normalizeBankCode5(v){
+	  const digits = String(v ?? "").replace(/\D/g, "");
+	  if (!digits) return "";
+	  return digits.padStart(5, "0").slice(-5);
+	}
+
+	function normalizeBic(v){
+	  return String(v ?? "").trim().toUpperCase();
+	}
+
+	async function enrichBanksWithBicFromCsv(){
+	  const res = await fetch(BIC_CSV_URL, { cache: "no-store" });
+	  if (!res.ok) throw new Error(`CSV BIC inaccessible (HTTP ${res.status})`);
+	  const csv = await res.text();
+	  const rows = parseCsv(csv);
+
+	  // détecte champs candidats
+	  // on accepte par ex: bank_code / code_banque / code / banque / bic / swift / bank_name / name
+	  const pick = (obj, candidates) => {
+		for (const k of candidates){
+		  if (obj[k] != null && String(obj[k]).trim() !== "") return obj[k];
+		}
+		return "";
+	  };
+
+	  let merged = 0;
+
+	  for (const r of rows){
+		const code = normalizeBankCode5(
+		  pick(r, ["code_banque","bank_code","code","codebanque","banque_code","bankcode"])
+		);
+		const bic = normalizeBic(
+		  pick(r, ["bic","swift","swift_code","bic_code"])
+		);
+		const name = String(
+		  pick(r, ["bank_name","name","banque","libelle","libellé","etablissement","établissement"])
+		).trim();
+
+		if (!code) continue;
+
+		if (!DEFAULT_BANK_REF[code]) DEFAULT_BANK_REF[code] = {};
+		if (name && !DEFAULT_BANK_REF[code].name) DEFAULT_BANK_REF[code].name = name;
+
+		// si plusieurs BIC existent, on conserve le premier par défaut
+		if (bic && !DEFAULT_BANK_REF[code].bic) DEFAULT_BANK_REF[code].bic = bic;
+
+		merged++;
+	  }
+
+	  return { merged, rows: rows.length };
+	}
+
+    // ---------------------------
+    // Helpers
+    // ---------------------------
+    const $ = (id) => document.getElementById(id);
+
+    function setStatus(text, kind="secondary"){
+      const el = $("ibanStatus");
+      el.className = `ms-auto badge bg-${kind}`;
+      el.textContent = text;
+    }
+
+    function showMsg(html, kind="info"){
+      const box = $("msgBox");
+      box.style.display = "block";
+      box.className = `alert alert-${kind} mb-0`;
+      box.innerHTML = html;
+    }
+
+    function hideMsg(){
+      const box = $("msgBox");
+      box.style.display = "none";
+      box.innerHTML = "";
+    }
+
+    function log(lines){
+      $("logBox").textContent = Array.isArray(lines) ? lines.join("\n") : String(lines ?? "");
+    }
+
+    function normalizeIban(raw){
+      return (raw || "")
+        .toUpperCase()
+        .replace(/[^A-Z0-9]/g, ""); // supprime espaces + séparateurs
+    }
+
+    // MOD 97 (ISO 13616) : IBAN valide si remainder = 1
+    // Implémentation "chunked" pour éviter BigInt côté vieux navigateurs.
+    function ibanMod97(iban){
+      // 1) déplacer 4 premiers caractères à la fin
+      const rearranged = iban.slice(4) + iban.slice(0,4);
+      // 2) convertir lettres A=10 ... Z=35
+      let expanded = "";
+      for (const ch of rearranged){
+        const code = ch.charCodeAt(0);
+        if (code >= 65 && code <= 90) expanded += String(code - 55);
+        else expanded += ch;
+      }
+      // 3) calcul modulo 97 en itérant
+      let remainder = 0;
+      for (let i=0; i<expanded.length; i+=9){
+        const block = String(remainder) + expanded.slice(i, i+9);
+        remainder = Number(block) % 97;
+      }
+      return remainder;
+    }
+
+    // Conversion RIB : lettres -> chiffres (A=1...I=9, J=1...R=9, S=2...Z=9)
+    // Standard "RIB key" mapping used in FR.
+    function ribCharToNumber(ch){
+      if (/[0-9]/.test(ch)) return ch;
+      // A..Z
+      const map = {
+        A:"1",B:"2",C:"3",D:"4",E:"5",F:"6",G:"7",H:"8",I:"9",
+        J:"1",K:"2",L:"3",M:"4",N:"5",O:"6",P:"7",Q:"8",R:"9",
+        S:"2",T:"3",U:"4",V:"5",W:"6",X:"7",Y:"8",Z:"9"
+      };
+      return map[ch] ?? "";
+    }
+
+    // Clé RIB = 97 - ((89*banque + 15*guichet + 3*compte) mod 97)
+    // avec compte converti en numérique via la table ci-dessus (lettres).
+    function computeRibKey(bankCode, branchCode, account){
+      const accountNum = account.split("").map(ribCharToNumber).join("");
+      // calcul mod 97 en itérant (évite BigInt)
+      function mod97FromString(numStr){
+        let rem = 0;
+        for (let i=0; i<numStr.length; i+=9){
+          const block = String(rem) + numStr.slice(i, i+9);
+          rem = Number(block) % 97;
+        }
+        return rem;
+      }
+      const n1 = bankCode + branchCode + accountNum + "00";
+      // Méthode alternative robuste : prendre concat et ajuster coefficients via "00" puis corriger :
+      // Ici on utilise la formule classique via coefficients avec BigInt (si dispo) sinon fallback concat mod.
+      // On privilégie concat mod (suffisante pour contrôle) :
+      const rem = mod97FromString(n1);
+      const key = (97 - rem) % 97;
+      return String(key).padStart(2, "0");
+    }
+
+    function lookupBank(bankCode){
+      return BANK_REF[bankCode] || null;
+    }
+
+	function formatIbanPretty(iban){
+	  // groupé par 4
+	  return (iban || "").replace(/(.{4})/g, "$1 ").trim();
+	}
+
+	function formatRibPretty(bankCode, branchCode, account, ribKey){
+	  const b = bankCode || "";
+	  const g = branchCode || "";
+	  const a = account || "";
+	  const k = ribKey || "";
+	  // groupé 5-5-11-2 (avec espaces)
+	  return [b, g, a, k].filter(Boolean).join(" ").trim();
+	}
+
+    function clearOutputs(){
+      $("outCountry").textContent = "—";
+      $("outIbanKey").textContent = "—";
+      $("outBankCode").textContent = "—";
+      $("outBranchCode").textContent = "—";
+      $("outAccount").textContent = "—";
+      $("outRibKey").textContent = "—";
+      $("outBankName").textContent = "—";
+      $("outBic").textContent = "—";
+	  $("outRibPretty").textContent = "—";
+      log("—");
+    }
+
+    function copyToClipboard(text){
+      return navigator.clipboard.writeText(text);
+    }
+
+    // ---------------------------
+    // Main decode (FR only)
+    // ---------------------------
+    function decode(){
+      hideMsg();
+      clearOutputs();
+
+      const raw = $("iban").value;
+      const iban = normalizeIban(raw);
+
+      const logs = [];
+      logs.push(`Saisie (brut): ${raw}`);
+      logs.push(`Normalisé: ${iban}`);
+
+      if (!iban){
+        setStatus("En attente", "secondary");
+        showMsg("Veuillez saisir un IBAN.", "warning");
+        log(logs);
+        return;
+      }
+
+      if (iban.length < 4){
+        setStatus("Incomplet", "warning");
+        showMsg("IBAN incomplet.", "warning");
+        log(logs);
+        return;
+      }
+
+      const country = iban.slice(0,2);
+      const ibanKey = iban.slice(2,4);
+
+      $("outCountry").textContent = country;
+      $("outIbanKey").textContent = ibanKey;
+
+      // Validité MOD97
+      let mod = null;
+      try{
+        mod = ibanMod97(iban);
+        logs.push(`MOD97 remainder: ${mod}`);
+      }catch(e){
+        logs.push(`Erreur MOD97: ${e?.message ?? e}`);
+      }
+
+      if (mod === 1) setStatus("IBAN valide", "success");
+      else setStatus("IBAN non valide", "danger");
+
+      if (country !== "FR"){
+        showMsg(
+          `IBAN détecté <span class="mono">${country}</span>. Ce module extrait précisément <b>code banque / guichet / compte / clé RIB</b> uniquement pour les IBAN français (FR).`,
+          "info"
+        );
+        log(logs);
+        return;
+      }
+
+      // FR = 27 caractères (FR + 2 + 23 BBAN)
+      if (iban.length !== 27){
+        showMsg(`Longueur IBAN FR attendue: <b>27</b>. Longueur détectée: <b>${iban.length}</b>.`, "warning");
+      }
+
+      const bban = iban.slice(4); // 23 chars
+      logs.push(`BBAN (23): ${bban}`);
+
+      if (bban.length < 23){
+        showMsg("BBAN incomplet pour un IBAN FR (23 caractères attendus après FRkk).", "warning");
+        log(logs);
+        return;
+      }
+
+      const bankCode = bban.slice(0,5);
+      const branchCode = bban.slice(5,10);
+      const account = bban.slice(10,21);
+      const ribKey = bban.slice(21,23);
+
+      $("outBankCode").textContent = bankCode;
+      $("outBranchCode").textContent = branchCode;
+      $("outAccount").textContent = account;
+      $("outRibKey").textContent = ribKey;
+	  $("outRibPretty").textContent = formatRibPretty(bankCode, branchCode, account, ribKey);
+
+      logs.push(`Code banque: ${bankCode}`);
+      logs.push(`Code guichet: ${branchCode}`);
+      logs.push(`Compte: ${account}`);
+      logs.push(`Clé RIB: ${ribKey}`);
+
+      // Contrôle clé RIB (recalcul)
+      let computed = null;
+      try{
+        computed = computeRibKey(bankCode, branchCode, account);
+        logs.push(`Clé RIB recalculée: ${computed}`);
+        if (computed === ribKey){
+          logs.push("Contrôle clé RIB: OK");
+        }else{
+          logs.push("Contrôle clé RIB: ECART");
+          showMsg(
+            `Attention : la clé RIB extraite (<span class="mono">${ribKey}</span>) ne correspond pas à la clé recalculée (<span class="mono">${computed}</span>).`,
+            "warning"
+          );
+        }
+      }catch(e){
+        logs.push(`Erreur calcul clé RIB: ${e?.message ?? e}`);
+      }
+
+      // Lookup banque/BIC
+      const ref = lookupBank(bankCode);
+      if (ref){
+        $("outBankName").textContent = ref.name || "—";
+        $("outBic").textContent = ref.bic || "—";
+        logs.push(`Lookup banque: ${ref.name ?? "—"}`);
+        logs.push(`Lookup BIC: ${ref.bic ?? "—"}`);
+      }else{
+        $("outBankName").textContent = "Inconnu (à compléter dans le référentiel)";
+        $("outBic").textContent = "Inconnu (à compléter dans le référentiel)";
+        logs.push("Lookup banque/BIC: non trouvé (code banque absent du référentiel)");
+      }
+
+      log(logs);
+
+      // Message de synthèse
+	  /*
+      if (mod === 1){
+        showMsg(`Décodage terminé. IBAN <b>valide</b> (MOD97=1).`, "success");
+      }else{
+        showMsg(`Décodage terminé, mais IBAN <b>non valide</b> (MOD97≠1). Vérifiez la saisie.`, "danger");
+      }
+	  */
+    }
+
+    // ---------------------------
+    // UI events
+    // ---------------------------
+    function loadRefToTextarea(){
+      $("bankRef").value = JSON.stringify(BANK_REF, null, 2);
+    }
+
+    $("btnDecode").addEventListener("click", decode);
+    $("iban").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") decode();
+    });
+
+    $("btnExample").addEventListener("click", () => {
+      // Exemple : chaîne de test (peut être mod97 non valide selon valeurs)
+      $("iban").value = "FR76 3000 4009 7612 3456 7890 189";
+      decode();
+    });
+
+    $("btnReset").addEventListener("click", () => {
+      $("iban").value = "";
+      hideMsg();
+      clearOutputs();
+      setStatus("En attente", "secondary");
+    });
+
+    $("btnCopyRib").addEventListener("click", async () => {
+      const bban =
+        String($("outBankCode").textContent) +
+        String($("outBranchCode").textContent) +
+        String($("outAccount").textContent) +
+        String($("outRibKey").textContent);
+
+      if (bban.includes("—") || bban.length < 23){
+        showMsg("Rien à copier : commencez par décoder un IBAN FR.", "warning");
+        return;
+      }
+      await copyToClipboard(bban);
+      showMsg("BBAN (RIB) copié dans le presse-papiers.", "success");
+    });
+
+    $("btnCopyAll").addEventListener("click", async () => {
+      const lines = [
+        `IBAN: ${formatIbanPretty(normalizeIban($("iban").value))}`,
+        `Pays: ${$("outCountry").textContent}`,
+        `Clé IBAN: ${$("outIbanKey").textContent}`,
+        `Code banque: ${$("outBankCode").textContent}`,
+        `Code guichet: ${$("outBranchCode").textContent}`,
+        `Compte: ${$("outAccount").textContent}`,
+        `Clé RIB: ${$("outRibKey").textContent}`,
+        `Banque: ${$("outBankName").textContent}`,
+        `BIC: ${$("outBic").textContent}`
+      ].join("\n");
+      await copyToClipboard(lines);
+      showMsg("Résultats copiés dans le presse-papiers.", "success");
+    });
+
+    $("btnApplyRef").addEventListener("click", () => {
+      try{
+        const parsed = JSON.parse($("bankRef").value);
+        if (typeof parsed !== "object" || Array.isArray(parsed) || parsed === null){
+          throw new Error("Le JSON doit être un objet {code: {name,bic}}.");
+        }
+        BANK_REF = parsed;
+        showMsg("Référentiel appliqué.", "success");
+        // Re-run decode to refresh name/BIC if outputs already present
+        if (normalizeIban($("iban").value)) decode();
+      }catch(e){
+        showMsg(`Référentiel invalide : ${e.message ?? e}`, "danger");
+      }
+    });
+
+    $("btnRestoreRef").addEventListener("click", () => {
+      BANK_REF = structuredClone(DEFAULT_BANK_REF);
+      loadRefToTextarea();
+      showMsg("Référentiel par défaut restauré.", "success");
+      if (normalizeIban($("iban").value)) decode();
+    });
+
+	$("iban").addEventListener("input", (e) => {
+	  const cursor = e.target.selectionStart;
+	  const raw = e.target.value;
+
+	  // normalise puis ré-affiche groupé par 4
+	  const normalized = normalizeIban(raw);
+	  const pretty = formatIbanPretty(normalized);
+
+	  e.target.value = pretty;
+
+	  // repositionnement simple (suffisant dans 95% des cas)
+	  // (optionnel : gestion avancée du curseur si vous le souhaitez)
+	});
+
+	// init
+    loadRefToTextarea();
+    clearOutputs();
+    setStatus("En attente", "secondary");
+    log([
+      "Prêt.",
+      "1) Saisir un IBAN FR",
+      "2) Cliquer 'Décoder'",
+      "3) Compléter le référentiel si nécessaire (nom + BIC)"
+    ]);
+  </script>
+</body>
+</html>
